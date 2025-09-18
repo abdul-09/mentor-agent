@@ -1,0 +1,76 @@
+# Production-grade FastAPI Dependencies
+# Core Framework
+fastapi[all]==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.0.3
+
+# Security & Authentication (RULES AUTH-001, AUTH-002, AUTH-003)
+bcrypt==4.1.2
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# Database & ORM (RULES DB-001, DB-002, PERF-002)
+sqlalchemy==2.0.23
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# Caching & Session Management (RULE PERF-003, AUTH-004)
+redis[hiredis]==5.0.1
+aioredis==2.0.1
+
+# AI & ML Dependencies
+openai>=1.6.1,<2.0.0
+pinecone-client==3.0.3
+langchain>=0.1.0
+langchain-openai>=0.0.5
+
+# PDF Processing
+PyMuPDF==1.23.8
+pdfplumber==0.10.3
+python-magic==0.4.27
+
+# GitHub Integration
+GitPython==3.1.40
+PyGithub==2.1.1
+
+# Code Analysis
+tree-sitter==0.25.0
+tree-sitter-python==0.25.0
+tree-sitter-javascript==0.25.0
+tree-sitter-typescript==0.23.2
+
+# Security & Validation (RULE SEC-001, SEC-002)
+python-decouple==3.8
+cryptography==42.0.0
+httpx==0.25.2
+
+# Monitoring & Logging (RULES MON-001, LOG-001)
+structlog==23.2.0
+sentry-sdk[fastapi]==1.38.0
+prometheus-client==0.19.0
+
+# File Processing & Storage
+aiofiles==23.2.1
+boto3==1.34.0
+pillow==10.1.0
+
+# Testing (RULE TEST-001)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+factory-boy==3.3.0
+
+# Development Tools
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+mypy==1.7.1
+pre-commit==3.6.0
+
+# Environment & Configuration
+python-dotenv==1.0.0
+click==8.1.7
+rich==13.7.0
