@@ -10,6 +10,8 @@ bcrypt==4.1.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
+pyotp==2.9.0
+qrcode[pil]==7.4.2
 
 # Database & ORM (RULES DB-001, DB-002, PERF-002)
 sqlalchemy==2.0.23
@@ -26,6 +28,11 @@ openai>=1.6.1,<2.0.0
 pinecone-client==3.0.3
 langchain>=0.1.0
 langchain-openai>=0.0.5
+
+# AI Providers
+openai>=1.6.1,<2.0.0
+anthropic>=0.7.0
+aiohttp>=3.8.0
 
 # PDF Processing
 PyMuPDF==1.23.8
@@ -74,3 +81,13 @@ pre-commit==3.6.0
 python-dotenv==1.0.0
 click==8.1.7
 rich==13.7.0
+
+#security
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+aiosqlite
+redis[hiredis]==5.0.1
+pyotp
+qrcode[pil]
+aiosmtplib

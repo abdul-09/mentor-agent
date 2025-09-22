@@ -10,7 +10,7 @@ Compliance:
 
 from fastapi import APIRouter
 
-from src.api.v1.endpoints import auth, files, analysis, users, admin
+from src.api.v1.endpoints import auth, files, analysis, users, admin, github, notifications, advanced_analysis
 
 # Create main API router for v1
 api_v1_router = APIRouter()
@@ -46,6 +46,24 @@ api_v1_router.include_router(
     tags=["administration"]
 )
 
+api_v1_router.include_router(
+    github.router,
+    prefix="/github",
+    tags=["github-analysis"]
+)
+
+api_v1_router.include_router(
+    notifications.router,
+    prefix="/notifications",
+    tags=["notifications"]
+)
+
+# Fixed: Removed the duplicate prefix since it's already defined in the router
+api_v1_router.include_router(
+    advanced_analysis.router,
+    tags=["advanced-analysis"]
+)
+
 
 @api_v1_router.get("/", tags=["api-info"])
 async def api_v1_info():
@@ -59,6 +77,9 @@ async def api_v1_info():
             "/files - File upload and management",
             "/analysis - Code and PDF analysis",
             "/admin - Administrative functions",
+            "/github - GitHub repository analysis",
+            "/notifications - User notifications",
+            "/advanced-analysis - Advanced code analysis",
         ],
         "documentation": "/api/docs",
     }

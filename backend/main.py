@@ -10,6 +10,7 @@ Compliance:
 """
 
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -20,7 +21,13 @@ import structlog
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from prometheus_client import Counter, Histogram, generate_latest
+from prometheus_client import (
+    CollectorRegistry, 
+    Counter, 
+    Histogram, 
+    generate_latest,
+    REGISTRY
+)
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
@@ -29,6 +36,12 @@ from src.api.v1.router import api_v1_router
 from src.security.middleware import SecurityHeadersMiddleware, RateLimitMiddleware
 from src.utils.logging import setup_logging
 from src.utils.health import health_check
+from src.services.redis_service import redis_service
+from src.services.pinecone_service import pinecone_service
+from src.services.email_service import email_service
+from src.services.notification_service import notification_service
+from src.services.advanced_analysis_service import advanced_analysis_service
+from src.models.database import init_database, close_database
 
 # Initialize settings
 settings = get_settings()
@@ -49,17 +62,67 @@ if settings.SENTRY_DSN:
         environment=settings.ENVIRONMENT,
     )
 
-# Prometheus metrics for monitoring
-REQUEST_COUNT = Counter(
-    'http_requests_total', 
-    'Total HTTP requests', 
-    ['method', 'endpoint', 'status']
-)
-REQUEST_DURATION = Histogram(
-    'http_request_duration_seconds', 
-    'HTTP request duration', 
-    ['method', 'endpoint']
-)
+# Prometheus metrics - Fixed for hot reload issues
+def setup_metrics():
+    """Setup Prometheus metrics with proper handling for development hot reloads."""
+    global REQUEST_COUNT, REQUEST_DURATION, metrics_registry
+    
+    # Use custom registry for development to avoid conflicts
+    if settings.ENVIRONMENT == "development":
+        # Create a new registry for development
+        metrics_registry = CollectorRegistry()
+        
+        REQUEST_COUNT = Counter(
+            'http_requests_total', 
+            'Total HTTP requests', 
+            ['method', 'endpoint', 'status'],
+            registry=metrics_registry
+        )
+        REQUEST_DURATION = Histogram(
+            'http_request_duration_seconds', 
+            'HTTP request duration', 
+            ['method', 'endpoint'],
+            registry=metrics_registry
+        )
+        logger.info("Created custom metrics registry for development")
+        
+    else:
+        # Use default registry for production
+        metrics_registry = REGISTRY
+        
+        # Check if metrics already exist and clear them if needed
+        try:
+            existing_collectors = list(REGISTRY._collector_to_names.keys())
+            for collector in existing_collectors:
+                if hasattr(collector, '_name'):
+                    if collector._name in ['http_requests_total', 'http_request_duration_seconds']:
+                        REGISTRY.unregister(collector)
+                        logger.info(f"Unregistered existing metric: {collector._name}")
+        except Exception as e:
+            logger.warning(f"Error clearing existing metrics: {e}")
+        
+        REQUEST_COUNT = Counter(
+            'http_requests_total', 
+            'Total HTTP requests', 
+            ['method', 'endpoint', 'status']
+        )
+        REQUEST_DURATION = Histogram(
+            'http_request_duration_seconds', 
+            'HTTP request duration', 
+            ['method', 'endpoint']
+        )
+        logger.info("Created metrics with default registry for production")
+
+# Initialize metrics
+try:
+    setup_metrics()
+    logger.info("Metrics setup completed successfully")
+except Exception as e:
+    logger.error(f"Failed to setup metrics: {e}")
+    # Create dummy metrics to prevent crashes
+    REQUEST_COUNT = None
+    REQUEST_DURATION = None
+    metrics_registry = None
 
 
 @asynccontextmanager
@@ -68,17 +131,71 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting AI Code Mentor API", version=settings.VERSION)
     
-    # Initialize database connections, Redis, etc.
-    # TODO: Add database initialization
-    # TODO: Add Redis connection
-    # TODO: Add Pinecone initialization
+    try:
+        # Initialize database connections
+        await init_database()
+        logger.info("Database initialized successfully")
+        
+        # Initialize Redis connection
+        await redis_service.connect()
+        if redis_service.is_connected:
+            logger.info("Redis initialized successfully")
+        else:
+            logger.warning("Redis not available - running without caching")
+        
+        # Initialize Pinecone connection
+        await pinecone_service.connect()
+        if pinecone_service.is_connected:
+            logger.info("Pinecone initialized successfully")
+        else:
+            logger.warning("Pinecone not available - running without vector search")
+        
+        # Initialize Email service
+        await email_service.connect()
+        if email_service.is_connected:
+            logger.info("Email service initialized successfully")
+        else:
+            logger.warning("Email service not available - running without email notifications")
+        
+        # Initialize Notification service
+        await notification_service.connect()
+        if notification_service.is_connected:
+            logger.info("Notification service initialized successfully")
+        else:
+            logger.warning("Notification service not available - running with limited notifications")
+        
+    except Exception as e:
+        logger.error("Failed to initialize application", error=str(e))
+        raise
     
     yield
     
     # Shutdown
     logger.info("Shutting down AI Code Mentor API")
-    # TODO: Close database connections
-    # TODO: Close Redis connections
+    
+    try:
+        # Close database connections
+        await close_database()
+        logger.info("Database connections closed")
+        
+        # Close Redis connections
+        await redis_service.disconnect()
+        logger.info("Redis connections closed")
+        
+        # Close Pinecone connections
+        await pinecone_service.disconnect()
+        logger.info("Pinecone connections closed")
+        
+        # Close Email service connections
+        await email_service.disconnect()
+        logger.info("Email service connections closed")
+        
+        # Close Notification service connections
+        await notification_service.disconnect()
+        logger.info("Notification service connections closed")
+        
+    except Exception as e:
+        logger.error("Error during shutdown", error=str(e))
 
 
 # Initialize FastAPI application
@@ -143,17 +260,21 @@ async def logging_middleware(request: Request, call_next):
         # Calculate response time
         process_time = time.time() - start_time
         
-        # Update Prometheus metrics
-        REQUEST_COUNT.labels(
-            method=request.method,
-            endpoint=request.url.path,
-            status=response.status_code
-        ).inc()
-        
-        REQUEST_DURATION.labels(
-            method=request.method,
-            endpoint=request.url.path
-        ).observe(process_time)
+        # Update Prometheus metrics (with error handling)
+        try:
+            if REQUEST_COUNT and REQUEST_DURATION:
+                REQUEST_COUNT.labels(
+                    method=request.method,
+                    endpoint=request.url.path,
+                    status=response.status_code
+                ).inc()
+                
+                REQUEST_DURATION.labels(
+                    method=request.method,
+                    endpoint=request.url.path
+                ).observe(process_time)
+        except Exception as e:
+            logger.warning("Failed to update metrics", error=str(e))
         
         # Log response
         logger.info(
@@ -188,13 +309,19 @@ async def health_endpoint():
     """
     try:
         health_status = await health_check()
-        return {
-            "status": "healthy" if health_status["healthy"] else "unhealthy",
-            "timestamp": health_status["timestamp"],
-            "version": settings.VERSION,
-            "environment": settings.ENVIRONMENT,
-            "checks": health_status["checks"]
-        }
+        status_code = 200 if health_status["healthy"] else 503
+        
+        return Response(
+            content=str({
+                "status": "healthy" if health_status["healthy"] else "unhealthy",
+                "timestamp": health_status["timestamp"],
+                "version": settings.VERSION,
+                "environment": settings.ENVIRONMENT,
+                "checks": health_status["checks"]
+            }),
+            status_code=status_code,
+            media_type="application/json"
+        )
     except Exception as e:
         logger.error("Health check failed", error=str(e))
         raise HTTPException(status_code=503, detail="Service unavailable")
@@ -204,10 +331,22 @@ async def health_endpoint():
 @app.get("/metrics", tags=["monitoring"])
 async def metrics_endpoint():
     """Prometheus metrics endpoint."""
-    return Response(
-        content=generate_latest(),
-        media_type="text/plain"
-    )
+    try:
+        if metrics_registry:
+            content = generate_latest(metrics_registry)
+        else:
+            content = "# Metrics not available\n"
+            
+        return Response(
+            content=content,
+            media_type="text/plain"
+        )
+    except Exception as e:
+        logger.error("Failed to generate metrics", error=str(e))
+        return Response(
+            content="# Error generating metrics\n",
+            media_type="text/plain"
+        )
 
 
 # Include API routers (RULE API-001: Versioned under /api/v1/)

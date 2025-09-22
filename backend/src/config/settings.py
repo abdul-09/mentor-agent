@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     PINECONE_INDEX_NAME: str = Field(default="ai-code-mentor")
     
     # GitHub Configuration
+    GITHUB_TOKEN: Optional[str] = Field(default=None)
     GITHUB_CLIENT_ID: Optional[str] = Field(default=None)
     GITHUB_CLIENT_SECRET: Optional[str] = Field(default=None)
     GITHUB_ACCESS_TOKEN: Optional[str] = Field(default=None)
@@ -94,6 +95,17 @@ class Settings(BaseSettings):
     
     # Health Check Configuration
     HEALTH_CHECK_TIMEOUT: int = Field(default=30)
+    
+    # Email Configuration (RULE SEC-005)
+    SMTP_HOST: str = Field(default="smtp.gmail.com")
+    SMTP_PORT: int = Field(default=587)
+    SMTP_USERNAME: str = Field(...)
+    SMTP_PASSWORD: str = Field(...)
+    SMTP_USE_TLS: bool = Field(default=True)
+    SMTP_FROM_EMAIL: str = Field(...)
+    SMTP_FROM_NAME: str = Field(default="AI Code Mentor")
+    FRONTEND_URL: str = Field(default="http://localhost:3000")
+    SUPPORT_EMAIL: str = Field(default="support@ai-code-mentor.com")
     
     # Testing Configuration
     TESTING: bool = Field(default=False)

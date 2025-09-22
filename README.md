@@ -183,14 +183,6 @@ LOG_LEVEL="WARNING"
 ```bash
 # Run all tests with coverage
 pytest --cov=src --cov-report=html --cov-report=term
-
-# Run specific test categories
-pytest tests/unit/          # Unit tests
-pytest tests/integration/   # Integration tests
-pytest tests/security/      # Security tests
-
-# Performance testing
-pytest tests/performance/   # Load tests
 ```
 
 ## 📈 Performance Monitoring
@@ -212,11 +204,11 @@ pytest tests/performance/   # Load tests
 ### Code Quality
 ```bash
 # Format code
-black src/ tests/
-isort src/ tests/
+black src/
+isort src/
 
 # Lint code
-flake8 src/ tests/
+flake8 src/
 mypy src/
 
 # Security scan

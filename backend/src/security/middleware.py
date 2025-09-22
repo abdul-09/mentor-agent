@@ -17,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from src.config.settings import get_settings
+from src.services.redis_service import redis_service
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -93,7 +94,30 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         return client_ip
     
-    def _is_rate_limited(self, client_id: str) -> tuple[bool, Dict[str, any]]:
+    async def _is_rate_limited_redis(self, client_id: str) -> tuple[bool, Dict[str, any]]:
+        """Check rate limiting using Redis backend."""
+        try:
+            result = await redis_service.check_rate_limit(
+                identifier=client_id,
+                limit=self.max_requests,
+                window=self.window_size,
+                action="api_request"
+            )
+            
+            rate_limit_info = {
+                "limit": self.max_requests,
+                "remaining": result['remaining'],
+                "reset": result['reset_time'],
+                "window": self.window_size
+            }
+            
+            return not result['allowed'], rate_limit_info
+            
+        except Exception as e:
+            logger.error("Redis rate limiting failed, falling back to memory", error=str(e))
+            return self._is_rate_limited_memory(client_id)
+    
+    def _is_rate_limited_memory(self, client_id: str) -> tuple[bool, Dict[str, any]]:
         """
         Check if client is rate limited using sliding window.
         
@@ -145,7 +169,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         client_id = self._get_client_identifier(request)
-        is_limited, rate_info = self._is_rate_limited(client_id)
+        
+        # Use Redis rate limiting if available, fallback to memory
+        if redis_service.is_connected:
+            is_limited, rate_info = await self._is_rate_limited_redis(client_id)
+        else:
+            is_limited, rate_info = self._is_rate_limited_memory(client_id)
         
         if is_limited:
             logger.warning(
